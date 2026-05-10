@@ -10,11 +10,18 @@ import {
   OpenAICompatibleProvider
 } from '../models';
 import { AppSettingsStore } from '../settings/AppSettingsStore';
+import { OAuthService } from '../oauth';
+import {
+  InMemoryRepositoryCredentialStore,
+  RepositoryCredentialStore
+} from '../security/RepositoryCredentialStore';
 
 export interface AppServices {
   repositoryProviderRegistry: RepositoryProviderRegistry;
   modelProviderRegistry: ModelProviderRegistry;
   modelCredentialStore: ModelCredentialStore;
+  repositoryCredentialStore: RepositoryCredentialStore;
+  oauthService: OAuthService;
   settingsStore: AppSettingsStore;
 }
 
@@ -30,6 +37,8 @@ export function createAppServices(): AppServices {
     repositoryProviderRegistry,
     modelProviderRegistry,
     modelCredentialStore: new InMemoryModelCredentialStore(),
+    repositoryCredentialStore: new InMemoryRepositoryCredentialStore(),
+    oauthService: new OAuthService(),
     settingsStore: new AppSettingsStore()
   };
 }

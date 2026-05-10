@@ -274,11 +274,74 @@ struct Settings {
       this.SectionTitle('Repository connector', 'Choose which Git platform to use')
       this.RepositoryChoiceList()
 
+      this.SectionTitle('OAuth client IDs', 'Paste the client_id from each provider\'s OAuth app')
+      this.OAuthClientIdList()
+
       this.SectionTitle('Model connector', 'Pick the default model provider')
       this.ModelChoiceList()
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
+  }
+
+  @Builder
+  private OAuthClientIdList() {
+    Column({ space: 10 }) {
+      this.OAuthClientIdRow('GitHub', this.settings.oauthClientIds.github, (value: string) => {
+        this.updateSettings({
+          oauthClientIds: {
+            github: value,
+            gitcode: this.settings.oauthClientIds.gitcode,
+            gitee: this.settings.oauthClientIds.gitee
+          }
+        });
+      })
+      this.OAuthClientIdRow('GitCode', this.settings.oauthClientIds.gitcode, (value: string) => {
+        this.updateSettings({
+          oauthClientIds: {
+            github: this.settings.oauthClientIds.github,
+            gitcode: value,
+            gitee: this.settings.oauthClientIds.gitee
+          }
+        });
+      })
+      this.OAuthClientIdRow('Gitee', this.settings.oauthClientIds.gitee, (value: string) => {
+        this.updateSettings({
+          oauthClientIds: {
+            github: this.settings.oauthClientIds.github,
+            gitcode: this.settings.oauthClientIds.gitcode,
+            gitee: value
+          }
+        });
+      })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private OAuthClientIdRow(label: string, value: string, onChange: (value: string) => void) {
+    Column({ space: 6 }) {
+      Text(label)
+        .fontSize(13)
+        .fontColor('#1D2D2C')
+        .fontWeight(FontWeight.Medium)
+      TextInput({ text: value, placeholder: 'client_id' })
+        .placeholderColor('#9A9486')
+        .fontSize(14)
+        .fontColor('#1D2D2C')
+        .backgroundColor('#FAFAF6')
+        .borderRadius(8)
+        .height(40)
+        .width('100%')
+        .onChange((next: string) => {
+          onChange(next);
+        })
+    }
+    .alignItems(HorizontalAlign.Start)
+    .width('100%')
+    .padding(14)
+    .borderRadius(8)
+    .backgroundColor('#FFFFFF')
   }
 
   @Builder

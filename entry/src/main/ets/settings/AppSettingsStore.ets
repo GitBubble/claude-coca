@@ -1,5 +1,6 @@
 import { RepositoryProviderKind } from '../repository';
 import { ModelProviderKind } from '../models';
+import { cloneOAuthClientIds, EMPTY_OAUTH_CLIENT_IDS, OAuthClientIds } from '../oauth/OAuthConfig';
 
 export enum AppThemeMode {
   System = 'system',
@@ -34,6 +35,7 @@ export interface AppSettings {
   notifyOnChatComplete: boolean;
   notifyOnRepositoryUpdates: boolean;
   notifyOnErrors: boolean;
+  oauthClientIds: OAuthClientIds;
   updatedAt: number;
 }
 
@@ -49,6 +51,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   notifyOnChatComplete: true,
   notifyOnRepositoryUpdates: false,
   notifyOnErrors: true,
+  oauthClientIds: cloneOAuthClientIds(EMPTY_OAUTH_CLIENT_IDS),
   updatedAt: 0
 };
 
@@ -64,6 +67,7 @@ export interface AppSettingsPatch {
   notifyOnChatComplete?: boolean;
   notifyOnRepositoryUpdates?: boolean;
   notifyOnErrors?: boolean;
+  oauthClientIds?: OAuthClientIds;
 }
 
 function cloneAppSettings(source: AppSettings): AppSettings {
@@ -79,6 +83,7 @@ function cloneAppSettings(source: AppSettings): AppSettings {
     notifyOnChatComplete: source.notifyOnChatComplete,
     notifyOnRepositoryUpdates: source.notifyOnRepositoryUpdates,
     notifyOnErrors: source.notifyOnErrors,
+    oauthClientIds: cloneOAuthClientIds(source.oauthClientIds),
     updatedAt: source.updatedAt
   };
   return copy;
@@ -124,6 +129,9 @@ export class AppSettingsStore {
     }
     if (patch.notifyOnErrors !== undefined) {
       this.settings.notifyOnErrors = patch.notifyOnErrors;
+    }
+    if (patch.oauthClientIds !== undefined) {
+      this.settings.oauthClientIds = cloneOAuthClientIds(patch.oauthClientIds);
     }
     this.settings.updatedAt = Date.now();
     return this.getSnapshot();

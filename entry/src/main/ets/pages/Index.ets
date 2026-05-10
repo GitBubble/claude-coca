@@ -1,8 +1,15 @@
 import { common, Want } from '@kit.AbilityKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { RepositoryProviderKind } from '../repository';
 import { AppServices, getAppServices } from '../app/AppServices';
+import {
+  describeProvider,
+  OAuthErrorKind,
+  OAuthSessionSnapshot,
+  OAuthSessionState
+} from '../oauth';
 
 const LOG_DOMAIN: number = 0x0000;
 const LOG_TAG: string = 'ClaudeCocaLogin';
@@ -11,7 +18,6 @@ interface OssLoginOption {
   kind: RepositoryProviderKind;
   title: string;
   subtitle: string;
-  authorizeUrl: string;
   badge: string;
   badgeColor: string;
   badgeTextColor: string;
@@ -23,7 +29,6 @@ const LOGIN_OPTIONS: OssLoginOption[] = [
     kind: RepositoryProviderKind.GitHub,
     title: 'Continue with GitHub',
     subtitle: 'Sign in with your GitHub account',
-    authorizeUrl: 'https://github.com/login/oauth/authorize?client_id=claude-coca&scope=repo%20read%3Auser&redirect_uri=claude-coca%3A%2F%2Foauth%2Fgithub',
     badge: 'GH',
     badgeColor: '#1D2D2C',
     badgeTextColor: '#FFFFFF',
@@ -33,7 +38,6 @@ const LOGIN_OPTIONS: OssLoginOption[] = [
     kind: RepositoryProviderKind.GitCode,
     title: 'Continue with GitCode',
     subtitle: 'Sign in with your GitCode account',
-    authorizeUrl: 'https://gitcode.com/oauth/authorize?client_id=claude-coca&scope=user_info%20projects&redirect_uri=claude-coca%3A%2F%2Foauth%2Fgitcode&response_type=code',
     badge: 'GC',
     badgeColor: '#1F6FEB',
     badgeTextColor: '#FFFFFF',
@@ -43,7 +47,6 @@ const LOGIN_OPTIONS: OssLoginOption[] = [
     kind: RepositoryProviderKind.Gitee,
     title: 'Continue with Gitee',
     subtitle: 'Sign in with your Gitee account',
-    authorizeUrl: 'https://gitee.com/oauth/authorize?client_id=claude-coca&scope=user_info%20projects&redirect_uri=claude-coca%3A%2F%2Foauth%2Fgitee&response_type=code',
     badge: 'GE',
     badgeColor: '#C71D23',
     badgeTextColor: '#FFFFFF',
@@ -55,26 +58,152 @@ const LOGIN_OPTIONS: OssLoginOption[] = [
 @Component
 struct Index {
   @State private statusMessage: string = '';
+  @State private modalVisible: boolean = false;
+  @State private modalProvider: RepositoryProviderKind = RepositoryProviderKind.GitHub;
+  @State private modalProviderName: string = 'GitHub';
+  @State private modalState: OAuthSessionState = OAuthSessionState.Idle;
+  @State private modalUserCode: string = '';
+  @State private modalVerificationUri: string = '';
+  @State private modalVerificationUriComplete: string = '';
+  @State private modalStatusText: string = '';
+  @State private modalErrorText: string = '';
 
   private readonly services: AppServices = getAppServices();
+  private unsubscribe?: () => void;
+
+  aboutToDisappear(): void {
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = undefined;
+    }
+    this.services.oauthService.cancel();
+  }
 
   private openOssLogin(option: OssLoginOption): void {
     this.services.settingsStore.update({ repositoryProvider: option.kind });
-    this.statusMessage = `Opening ${option.title.replace('Continue with ', '')} sign-in...`;
+    this.modalProvider = option.kind;
+    this.modalProviderName = describeProvider(option.kind);
+    this.modalUserCode = '';
+    this.modalVerificationUri = '';
+    this.modalVerificationUriComplete = '';
+    this.modalErrorText = '';
+    this.modalStatusText = `Requesting device code from ${this.modalProviderName}...`;
+    this.modalState = OAuthSessionState.RequestingDeviceCode;
+    this.statusMessage = '';
+    this.modalVisible = true;
 
-    const context = getContext(this) as common.UIAbilityContext;
-    const want: Want = {
-      action: 'ohos.want.action.viewData',
-      uri: option.authorizeUrl
-    };
+    if (this.unsubscribe) {
+      this.unsubscribe();
+    }
+    this.unsubscribe = this.services.oauthService.subscribe((snapshot: OAuthSessionSnapshot) => {
+      this.applyOAuthSnapshot(snapshot);
+    });
 
-    context.startAbility(want)
-      .then(() => {
-        hilog.info(LOG_DOMAIN, LOG_TAG, 'OAuth browser launched for %{public}s', option.kind);
+    const clientIds = this.services.settingsStore.getSnapshot().oauthClientIds;
+    this.services.oauthService.start(option.kind, clientIds)
+      .then((final: OAuthSessionSnapshot) => {
+        this.applyOAuthSnapshot(final);
+        if (final.state === OAuthSessionState.Authenticated && final.token) {
+          this.services.repositoryCredentialStore.saveOAuthToken({
+            provider: option.kind,
+            accessToken: final.token.accessToken,
+            refreshToken: final.token.refreshToken,
+            scopes: final.token.scopes,
+            expiresAt: final.token.expiresInSeconds !== undefined
+              ? Date.now() + final.token.expiresInSeconds * 1000
+              : undefined,
+            displayName: `${this.modalProviderName} OAuth`
+          }).then(() => {
+            this.modalVisible = false;
+            this.statusMessage = `Signed in to ${this.modalProviderName}`;
+            this.goToWorkspace();
+          }).catch((error: Error) => {
+            this.modalErrorText = `Could not save credential: ${error.message}`;
+          });
+        }
       })
       .catch((error: Error) => {
-        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to launch browser: %{public}s', error.message);
-        this.statusMessage = `Could not launch browser: ${error.message}`;
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'OAuth session failed: %{public}s', error.message);
+        this.modalErrorText = error.message;
+      });
+  }
+
+  private applyOAuthSnapshot(snapshot: OAuthSessionSnapshot): void {
+    this.modalState = snapshot.state;
+    if (snapshot.grant) {
+      this.modalUserCode = snapshot.grant.userCode;
+      this.modalVerificationUri = snapshot.grant.verificationUri;
+      this.modalVerificationUriComplete = snapshot.grant.verificationUriComplete || '';
+    }
+    if (snapshot.state === OAuthSessionState.RequestingDeviceCode) {
+      this.modalStatusText = 'Requesting device code...';
+    } else if (snapshot.state === OAuthSessionState.AwaitingUserAuthorization) {
+      this.modalStatusText = `Waiting for you to authorize on ${this.modalProviderName} (polling every ${snapshot.pollIntervalSeconds}s)...`;
+    } else if (snapshot.state === OAuthSessionState.ExchangingToken) {
+      this.modalStatusText = 'Checking authorization status...';
+    } else if (snapshot.state === OAuthSessionState.Authenticated) {
+      this.modalStatusText = 'Authorized.';
+    } else if (snapshot.state === OAuthSessionState.Cancelled) {
+      this.modalStatusText = 'Cancelled.';
+    } else if (snapshot.state === OAuthSessionState.Failed) {
+      this.modalStatusText = '';
+      this.modalErrorText = snapshot.error
+        ? this.describeError(snapshot.error.kind, snapshot.error.message)
+        : 'Sign-in failed';
+    }
+  }
+
+  private describeError(kind: OAuthErrorKind, message: string): string {
+    if (kind === OAuthErrorKind.MissingClientId) {
+      return 'No OAuth client ID is configured for this provider. Open Settings → Connector and paste the client ID issued by your OAuth app.';
+    }
+    if (kind === OAuthErrorKind.AccessDenied) {
+      return 'Authorization was declined.';
+    }
+    if (kind === OAuthErrorKind.ExpiredToken) {
+      return 'The device code expired before authorization was completed. Please try again.';
+    }
+    if (kind === OAuthErrorKind.Network) {
+      return `Network error: ${message}`;
+    }
+    return message;
+  }
+
+  private cancelOAuth(): void {
+    this.services.oauthService.cancel();
+    this.modalVisible = false;
+  }
+
+  private openVerificationPage(): void {
+    const url: string = this.modalVerificationUriComplete.length > 0
+      ? this.modalVerificationUriComplete
+      : this.modalVerificationUri;
+    if (url.length === 0) {
+      return;
+    }
+    const context = getContext(this) as common.UIAbilityContext;
+    const want: Want = { action: 'ohos.want.action.viewData', uri: url };
+    context.startAbility(want)
+      .then(() => {
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'Opened verification page for %{public}s', this.modalProvider);
+      })
+      .catch((error: Error) => {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to open verification page: %{public}s', error.message);
+        this.modalErrorText = `Could not open browser: ${error.message}`;
+      });
+  }
+
+  private copyUserCode(): void {
+    if (this.modalUserCode.length === 0) {
+      return;
+    }
+    const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, this.modalUserCode);
+    pasteboard.getSystemPasteboard().setData(data)
+      .then(() => {
+        this.modalStatusText = 'Code copied to clipboard';
+      })
+      .catch((error: Error) => {
+        this.modalErrorText = `Could not copy code: ${error.message}`;
       });
   }
 
@@ -116,10 +245,131 @@ struct Index {
         .onClick(() => {
           this.goToSettings();
         })
+
+      if (this.modalVisible) {
+        this.OAuthModal();
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor('#FAFAF6')
+  }
+
+  @Builder
+  private OAuthModal() {
+    Column() {
+      Column() {
+        Text(`Sign in to ${this.modalProviderName}`)
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#1D2D2C')
+
+        Text('Open the verification page on any device, then enter the code below.')
+          .fontSize(13)
+          .fontColor('#6F6A5F')
+          .margin({ top: 8 })
+          .textAlign(TextAlign.Start)
+
+        if (this.modalUserCode.length > 0) {
+          Column() {
+            Text('Your code')
+              .fontSize(11)
+              .fontColor('#9A9486')
+            Text(this.modalUserCode)
+              .fontSize(28)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#245B57')
+              .margin({ top: 4 })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .width('100%')
+          .padding(16)
+          .borderRadius(12)
+          .backgroundColor('#EEF5F2')
+          .margin({ top: 16 })
+
+          Row({ space: 10 }) {
+            Button('Copy code')
+              .fontSize(13)
+              .fontColor('#245B57')
+              .backgroundColor('#E7F1EF')
+              .borderRadius(10)
+              .layoutWeight(1)
+              .height(40)
+              .onClick(() => {
+                this.copyUserCode();
+              })
+            Button('Open verification page')
+              .fontSize(13)
+              .fontColor('#FAFAF6')
+              .backgroundColor('#245B57')
+              .borderRadius(10)
+              .layoutWeight(1)
+              .height(40)
+              .onClick(() => {
+                this.openVerificationPage();
+              })
+          }
+          .width('100%')
+          .margin({ top: 12 })
+
+          if (this.modalVerificationUri.length > 0) {
+            Text(this.modalVerificationUri)
+              .fontSize(11)
+              .fontColor('#6F6A5F')
+              .margin({ top: 8 })
+          }
+        }
+
+        if (this.modalStatusText.length > 0) {
+          Text(this.modalStatusText)
+            .fontSize(12)
+            .fontColor('#5F6865')
+            .margin({ top: 16 })
+            .textAlign(TextAlign.Start)
+            .width('100%')
+        }
+
+        if (this.modalErrorText.length > 0) {
+          Text(this.modalErrorText)
+            .fontSize(12)
+            .fontColor('#C71D23')
+            .margin({ top: 8 })
+            .textAlign(TextAlign.Start)
+            .width('100%')
+        }
+
+        Button(this.isModalTerminal() ? 'Close' : 'Cancel')
+          .fontSize(14)
+          .fontColor('#1D2D2C')
+          .backgroundColor('#EFEDE4')
+          .borderRadius(10)
+          .width('100%')
+          .height(44)
+          .margin({ top: 20 })
+          .onClick(() => {
+            this.cancelOAuth();
+          })
+      }
+      .width('100%')
+      .constraintSize({ maxWidth: 420 })
+      .padding(24)
+      .borderRadius(20)
+      .backgroundColor('#FFFFFF')
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+    .padding(24)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor('rgba(15, 26, 25, 0.55)')
+  }
+
+  private isModalTerminal(): boolean {
+    return this.modalState === OAuthSessionState.Authenticated
+      || this.modalState === OAuthSessionState.Cancelled
+      || this.modalState === OAuthSessionState.Failed;
   }
 
   @Builder

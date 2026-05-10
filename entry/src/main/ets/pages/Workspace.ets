@@ -70,14 +70,36 @@ struct Workspace {
 
   private readonly services: AppServices = getAppServices();
   private chatAbortSignal?: ChatAbortSignal;
-  private readonly authContext: RepositoryAuthContext = {
+  private authContext: RepositoryAuthContext = {
     credential: MOCK_CREDENTIAL,
     accessToken: 'mock-token'
   };
 
   aboutToAppear(): void {
+    this.hydrateAuthContext();
     this.refreshRepositoryPreview();
     this.hydrateModelSettings();
+  }
+
+  /**
+   * If the user signed in via the OAuth flow we reuse the stored token;
+   * otherwise the workspace continues to operate against the mock provider
+   * so the "Continue without signing in" affordance keeps working.
+   */
+  private hydrateAuthContext(): void {
+    const settings = this.services.settingsStore.getSnapshot();
+    this.services.repositoryCredentialStore.readActiveCredential(settings.repositoryProvider)
+      .then((stored) => {
+        if (stored) {
+          this.authContext = {
+            credential: stored.credential,
+            accessToken: stored.accessToken
+          };
+        }
+      })
+      .catch(() => {
+        // Keep the mock fallback on any read failure.
+      });
   }
 
   private hydrateModelSettings(): void {

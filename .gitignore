@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# HarmonyOS / ArkTS dependencies and build output
+oh_modules/
+build/
+hvigorfile.ts.cache
+.hvigor/
+.preview/
+
+# Node/tooling dependencies
+node_modules/
+
+# Android reference binaries and generated reverse-engineering output
+*.apk
+*.xapk
+phase0/
+xapktool/
+
+# Local archives and logs
+*.log
+*.tmp

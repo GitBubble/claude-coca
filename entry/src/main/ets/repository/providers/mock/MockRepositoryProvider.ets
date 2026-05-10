@@ -180,18 +180,23 @@ export class MockRepositoryProvider implements RepositoryProvider {
     const query = params.query.toLowerCase();
     const items = this.getFiles(params.repository, params.branch)
       .filter((file: RemoteFileContent) => file.path.toLowerCase().includes(query) || file.content.toLowerCase().includes(query))
-      .map((file: RemoteFileContent) => ({
-        path: file.path,
-        name: basename(file.path),
-        kind: RemoteEntryKind.File,
-        sha: file.commitSha,
-        size: file.size
-      }));
-    return { items, nextCursor: undefined };
+      .map((file: RemoteFileContent) => {
+        const entry: RemoteTreeEntry = {
+          path: file.path,
+          name: basename(file.path),
+          kind: RemoteEntryKind.File,
+          sha: file.commitSha,
+          size: file.size
+        };
+        return entry;
+      });
+    const result: PaginatedResult<RemoteTreeEntry> = { items, nextCursor: undefined };
+    return result;
   }
 
   public async compareRefs(_auth: RepositoryAuthContext, _params: CompareRefsRequest): Promise<CompareRefsResult> {
-    return { aheadBy: 0, behindBy: 0, files: [] };
+    const result: CompareRefsResult = { aheadBy: 0, behindBy: 0, files: [] };
+    return result;
   }
 
   public async createBranch(_auth: RepositoryAuthContext, request: CreateBranchRequest): Promise<BranchSummary> {
@@ -209,7 +214,20 @@ export class MockRepositoryProvider implements RepositoryProvider {
     branches.push(branch);
     this.branchesByRepository.set(repositoryKey(request.repository), branches);
     const sourceFiles = this.getFiles(request.repository, request.sourceBranch);
-    this.filesByRepositoryBranch.set(repositoryBranchKey(request.repository, request.newBranchName), sourceFiles.map((file: RemoteFileContent) => ({ ...file, branch: request.newBranchName })));
+    const copiedFiles = sourceFiles.map((file: RemoteFileContent) => {
+      const copy: RemoteFileContent = {
+        repository: file.repository,
+        branch: request.newBranchName,
+        path: file.path,
+        commitSha: file.commitSha,
+        content: file.content,
+        encoding: file.encoding,
+        size: file.size,
+        contentHash: file.contentHash
+      };
+      return copy;
+    });
+    this.filesByRepositoryBranch.set(repositoryBranchKey(request.repository, request.newBranchName), copiedFiles);
     return branch;
   }
 

@@ -1,0 +1,8 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "claude-coca",
+  "version": "1.0.0",
+  "description": "Native HarmonyOS 6.0+ / HarmonyOS NEXT shell for Claude Coca.",
+  "dependencies": {},
+  "devDependencies": {}
+}

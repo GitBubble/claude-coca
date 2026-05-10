@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "Claude Coca"
+    },
+    {
+      "name": "module_desc",
+      "value": "Claude Coca entry module"
+    },
+    {
+      "name": "entryability_desc",
+      "value": "Claude Coca main ability"
+    }
+  ]
+}

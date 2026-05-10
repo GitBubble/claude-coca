@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a native HarmonyOS NEXT app named **Claude Coca** for AI-assisted coding on local files and remote repositories. The Android Claude XAPK is a reference artifact for installation validation and feature study only; the HarmonyOS NEXT app should be implemented natively with ArkTS/ArkUI but we can learn to how to reverse it and use it from android claude
+Build a native HarmonyOS 6.0+ / HarmonyOS NEXT app named **Claude Coca** for AI-assisted coding on local files and remote repositories. The Android Claude XAPK is a reference artifact for installation validation and feature study only; the HarmonyOS NEXT app should be implemented natively with ArkTS/ArkUI but we can learn to how to reverse it and use it from android claude
 
 ## Current Inputs
 
@@ -118,6 +118,8 @@ Validation notes:
 
 Goal: create a native app shell named Claude Coca.
 
+Target platform: HarmonyOS 6.0+ / HarmonyOS NEXT.
+
 - Create DevEco Studio HarmonyOS NEXT project.
 - Configure bundle name, app icon placeholder, signing profile, and minimum compatible SDK.
 - Add main navigation:
@@ -128,9 +130,34 @@ Goal: create a native app shell named Claude Coca.
 	- Settings
 - Add empty-state screens and app settings store.
 
+Current status:
+
+- DevEco Studio detected at `/Applications/DevEco-Studio.app`, version `DS-243.24978.46.36.611268`.
+- HarmonyOS SDK was not detected on disk yet; install/select the SDK in DevEco Studio before building.
+- Product SDK target is set to `6.0.0(20)` for both compile and minimum compatible SDK; confirm the exact API suffix after installing the HarmonyOS 6 SDK.
+- Native project skeleton now uses the standard `entry` module layout.
+- Bundle name is `com.claudecoca.app`; signing is intentionally left for DevEco Studio profile setup.
+- `entry/src/main/ets/pages/Index.ets` adds the first ArkUI shell with Chat, Files, Repositories, Models, and Settings surfaces.
+- `entry/src/main/ets/settings/AppSettingsStore.ets` adds the initial settings store boundary.
+- Terminal Hvigor validation reaches SDK discovery and currently stops at `DEVECO_SDK_HOME`; set it after installing/selecting the HarmonyOS SDK.
+
 ### Phase 2: Model Provider MVP
 
 Goal: make the app useful with one provider before adding all vendors.
+
+Current status:
+
+- Model provider abstraction added under `entry/src/main/ets/models` with provider metadata, chat request/message types, streaming events, and normalized model errors.
+- `ModelProviderRegistry` now wires `MockModelProvider` (streaming-enabled) and an `OpenAICompatibleProvider` placeholder.
+- Chat and Models tabs in `entry/src/main/ets/pages/Index.ets` now support:
+	- provider selection,
+	- model ID override,
+	- API key save/read/clear through `ModelCredentialStore` boundary,
+	- streaming output,
+	- cancellation,
+	- retry for retryable failures,
+	- basic error-state rendering for invalid key, network failure, rate limit, and unsupported model.
+- API key persistence currently uses in-memory storage (`InMemoryModelCredentialStore`) and should be replaced with HarmonyOS secure storage in the next slice.
 
 - Implement provider abstraction.
 - Add one OpenAI-compatible provider adapter first for faster testing, or Anthropic first if API access is confirmed.
@@ -154,7 +181,7 @@ Goal: let the assistant read and propose edits to local files.
 
 Goal: support direct coding workflows against GitHub repositories.
 
-- Implementation started in `src/main/ets/repository` with provider-neutral domain types, provider interface, session state machine, credential boundary, provider registry, and GitHub adapter shell.
+- Implementation started in `entry/src/main/ets/repository` with provider-neutral domain types, provider interface, session state machine, credential boundary, provider registry, and GitHub adapter shell.
 - Current implementation notes are in `REPOSITORY_CONNECTOR_IMPLEMENTATION.md`.
 - Add GitHub auth.
 - List repositories and branches.
@@ -217,12 +244,16 @@ Goal: prepare a stable test build.
 
 ## Immediate Next Steps
 
-1. Create the native HarmonyOS NEXT project skeleton around the new `src/main/ets` source foundation.
-2. Confirm the target HarmonyOS NEXT SDK/API version and DevEco Studio version.
-3. Wire a real HarmonyOS HTTP client into `RepositoryHttpClient`.
-4. Wire HarmonyOS secure storage into `CredentialStore`.
-5. Finish the GitHub commit flow and repository browser UI.
-6. Decide whether the first live model provider should be Anthropic or an OpenAI-compatible endpoint.
+1. Install/select the HarmonyOS NEXT SDK in DevEco Studio and confirm the compile/compatible API target.
+2. Set `DEVECO_SDK_HOME` to the installed DevEco SDK path for terminal builds.
+3. Configure a DevEco signing profile for `com.claudecoca.app`.
+4. Open the new project skeleton in DevEco Studio and run the first build.
+5. Replace `InMemoryModelCredentialStore` with HarmonyOS secure storage.
+6. Wire a real HarmonyOS HTTP client for `OpenAICompatibleProvider` streaming.
+7. Wire a real HarmonyOS HTTP client into `RepositoryHttpClient`.
+8. Wire HarmonyOS secure storage into `CredentialStore`.
+9. Finish the GitHub commit flow and repository browser UI.
+10. Decide whether the first live model provider should be Anthropic or an OpenAI-compatible endpoint.
 
 ## Open Questions
 

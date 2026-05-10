@@ -1,0 +1,7 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "Claude Coca HarmonyOS 6.0+ entry module.",
+  "dependencies": {}
+}

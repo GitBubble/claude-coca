@@ -2,7 +2,7 @@
 
 ## What Exists Now
 
-Initial ArkTS source scaffolding has been added under `src/main/ets` for the GitHub/Gitee/GitCode repository feature.
+Initial ArkTS source scaffolding has been moved under `entry/src/main/ets` for the GitHub/Gitee/GitCode repository feature.
 
 Created modules:
 

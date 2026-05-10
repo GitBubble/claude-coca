@@ -32,7 +32,14 @@ import {
 } from '../../domain/RepositoryTypes';
 import { RepositoryErrorCode, RepositoryException, repositoryErrorFromHttpStatus } from '../../domain/RepositoryErrors';
 import { RepositoryProvider, RepositoryAuthenticationResult, RepositoryProviderMetadata, RepositorySessionStatus } from '../RepositoryProvider';
-import { buildUrl, RepositoryHttpClient, RepositoryHttpResponse } from '../RepositoryHttpClient';
+import {
+  buildUrl,
+  HttpMethod,
+  RepositoryBodyValue,
+  RepositoryHttpClient,
+  RepositoryHttpResponse,
+  RepositoryQueryValue
+} from '../RepositoryHttpClient';
 
 interface GitHubUserResponse {
   id: number;
@@ -66,9 +73,13 @@ interface GitHubRepositoryResponse {
   fork: boolean;
 }
 
+interface GitHubBranchCommitRef {
+  sha: string;
+}
+
 interface GitHubBranchResponse {
   name: string;
-  commit: { sha: string };
+  commit: GitHubBranchCommitRef;
   protected: boolean;
 }
 
@@ -83,6 +94,10 @@ interface GitHubContentResponse {
   encoding?: string;
 }
 
+interface GitHubBranchRef {
+  ref: string;
+}
+
 interface GitHubPullResponse {
   id: number;
   number: number;
@@ -91,8 +106,8 @@ interface GitHubPullResponse {
   state: string;
   draft?: boolean;
   html_url?: string;
-  head: { ref: string };
-  base: { ref: string };
+  head: GitHubBranchRef;
+  base: GitHubBranchRef;
 }
 
 interface GitHubIssueResponse {
@@ -103,17 +118,19 @@ interface GitHubIssueResponse {
   html_url?: string;
 }
 
+interface GitHubCompareFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch?: string;
+}
+
 interface GitHubCompareResponse {
   ahead_by: number;
   behind_by: number;
   html_url?: string;
-  files?: Array<{
-    filename: string;
-    status: string;
-    additions: number;
-    deletions: number;
-    patch?: string;
-  }>;
+  files?: GitHubCompareFile[];
 }
 
 export class GitHubProvider implements RepositoryProvider {
@@ -179,30 +196,31 @@ export class GitHubProvider implements RepositoryProvider {
   }
 
   public async listRepositories(auth: RepositoryAuthContext, params?: ListRepositoriesParams): Promise<PaginatedResult<RepositorySummary>> {
-    const response = await this.request<GitHubRepositoryResponse[]>(auth, 'GET', '/user/repos', {
-      per_page: params?.pagination?.perPage || 50,
-      page: params?.pagination?.page || 1,
-      sort: 'updated',
-      direction: 'desc',
-      visibility: params?.visibility && params.visibility !== RepositoryVisibility.Unknown ? params.visibility : undefined
-    }, undefined, 'GitHubProvider.listRepositories');
+    const query = new Map<string, RepositoryQueryValue>();
+    query.set('per_page', params?.pagination?.perPage || 50);
+    query.set('page', params?.pagination?.page || 1);
+    query.set('sort', 'updated');
+    query.set('direction', 'desc');
+    query.set('visibility', params?.visibility && params.visibility !== RepositoryVisibility.Unknown ? params.visibility : undefined);
+    const response = await this.request<GitHubRepositoryResponse[]>(auth, 'GET', '/user/repos', query, undefined, 'GitHubProvider.listRepositories');
 
-    return {
+    const result: PaginatedResult<RepositorySummary> = {
       items: response.data.map((repository: GitHubRepositoryResponse) => this.mapRepository(repository)),
       nextCursor: undefined
     };
+    return result;
   }
 
   public async listBranches(auth: RepositoryAuthContext, params: ListBranchesParams): Promise<PaginatedResult<BranchSummary>> {
-    const response = await this.request<GitHubBranchResponse[]>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}/branches`, {
-      per_page: params.pagination?.perPage || 50,
-      page: params.pagination?.page || 1,
-      protected: undefined
-    }, undefined, 'GitHubProvider.listBranches');
+    const query = new Map<string, RepositoryQueryValue>();
+    query.set('per_page', params.pagination?.perPage || 50);
+    query.set('page', params.pagination?.page || 1);
+    const response = await this.request<GitHubBranchResponse[]>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}/branches`, query, undefined, 'GitHubProvider.listBranches');
     const branches = response.data
       .filter((branch: GitHubBranchResponse) => !params.query || branch.name.includes(params.query))
       .map((branch: GitHubBranchResponse) => this.mapBranch(branch));
-    return { items: branches, nextCursor: undefined };
+    const result: PaginatedResult<BranchSummary> = { items: branches, nextCursor: undefined };
+    return result;
   }
 
   public async getDefaultBranch(auth: RepositoryAuthContext, repository: RepositorySummary): Promise<BranchSummary> {
@@ -221,17 +239,17 @@ export class GitHubProvider implements RepositoryProvider {
 
   public async listTree(auth: RepositoryAuthContext, params: ListTreeParams): Promise<RemoteTreeEntry[]> {
     const path = params.path ? `/contents/${params.path}` : '/contents';
-    const response = await this.request<GitHubContentResponse[] | GitHubContentResponse>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}${path}`, {
-      ref: params.branch
-    }, undefined, 'GitHubProvider.listTree');
+    const query = new Map<string, RepositoryQueryValue>();
+    query.set('ref', params.branch);
+    const response = await this.request<GitHubContentResponse[] | GitHubContentResponse>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}${path}`, query, undefined, 'GitHubProvider.listTree');
     const contentItems = Array.isArray(response.data) ? response.data : [response.data];
     return contentItems.map((item: GitHubContentResponse) => this.mapTreeEntry(item));
   }
 
   public async readFile(auth: RepositoryAuthContext, params: ReadFileParams): Promise<RemoteFileContent> {
-    const response = await this.request<GitHubContentResponse>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}/contents/${params.path}`, {
-      ref: params.branch
-    }, undefined, 'GitHubProvider.readFile');
+    const query = new Map<string, RepositoryQueryValue>();
+    query.set('ref', params.branch);
+    const response = await this.request<GitHubContentResponse>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}/contents/${params.path}`, query, undefined, 'GitHubProvider.readFile');
     if (response.data.type !== 'file') {
       throw new RepositoryException({
         code: RepositoryErrorCode.NotFound,
@@ -240,7 +258,7 @@ export class GitHubProvider implements RepositoryProvider {
         operation: 'GitHubProvider.readFile'
       });
     }
-    return {
+    const content: RemoteFileContent = {
       repository: params.repository,
       branch: params.branch,
       path: params.path,
@@ -250,6 +268,7 @@ export class GitHubProvider implements RepositoryProvider {
       size: response.data.size,
       contentHash: response.data.sha
     };
+    return content;
   }
 
   public async searchFiles(_auth: RepositoryAuthContext, _params: SearchFilesParams): Promise<PaginatedResult<RemoteTreeEntry>> {
@@ -263,11 +282,11 @@ export class GitHubProvider implements RepositoryProvider {
 
   public async compareRefs(auth: RepositoryAuthContext, params: CompareRefsRequest): Promise<CompareRefsResult> {
     const response = await this.request<GitHubCompareResponse>(auth, 'GET', `/repos/${params.repository.owner}/${params.repository.name}/compare/${params.baseRef}...${params.headRef}`, undefined, undefined, 'GitHubProvider.compareRefs');
-    return {
+    const result: CompareRefsResult = {
       aheadBy: response.data.ahead_by,
       behindBy: response.data.behind_by,
       webUrl: response.data.html_url,
-      files: (response.data.files || []).map((file: { filename: string; status: string; additions: number; deletions: number; patch?: string }) => {
+      files: (response.data.files || []).map((file: GitHubCompareFile) => {
         const change: CompareFileChange = {
           path: file.filename,
           kind: file.status === 'added' ? FileChangeKind.Added : file.status === 'removed' ? FileChangeKind.Deleted : FileChangeKind.Modified,
@@ -278,18 +297,20 @@ export class GitHubProvider implements RepositoryProvider {
         return change;
       })
     };
+    return result;
   }
 
   public async createBranch(auth: RepositoryAuthContext, request: CreateBranchRequest): Promise<BranchSummary> {
-    await this.request<Object>(auth, 'POST', `/repos/${request.repository.owner}/${request.repository.name}/git/refs`, undefined, {
-      ref: `refs/heads/${request.newBranchName}`,
-      sha: request.sourceCommitSha
-    }, 'GitHubProvider.createBranch');
-    return {
+    const body = new Map<string, RepositoryBodyValue>();
+    body.set('ref', `refs/heads/${request.newBranchName}`);
+    body.set('sha', request.sourceCommitSha);
+    await this.request<Object>(auth, 'POST', `/repos/${request.repository.owner}/${request.repository.name}/git/refs`, undefined, body, 'GitHubProvider.createBranch');
+    const branch: BranchSummary = {
       name: request.newBranchName,
       commitSha: request.sourceCommitSha,
       protected: false
     };
+    return branch;
   }
 
   public async commitChanges(_auth: RepositoryAuthContext, _request: CommitChangesRequest): Promise<CommitResult> {
@@ -302,53 +323,56 @@ export class GitHubProvider implements RepositoryProvider {
   }
 
   public async createPullOrMergeRequest(auth: RepositoryAuthContext, draft: ReviewRequestDraft): Promise<ReviewRequest> {
-    const response = await this.request<GitHubPullResponse>(auth, 'POST', `/repos/${draft.repository.owner}/${draft.repository.name}/pulls`, undefined, {
-      title: draft.title,
-      body: draft.body,
-      head: draft.sourceBranch,
-      base: draft.targetBranch,
-      draft: draft.draft
-    }, 'GitHubProvider.createPullOrMergeRequest');
+    const body = new Map<string, RepositoryBodyValue>();
+    body.set('title', draft.title);
+    body.set('body', draft.body !== undefined ? draft.body : null);
+    body.set('head', draft.sourceBranch);
+    body.set('base', draft.targetBranch);
+    body.set('draft', draft.draft === true);
+    const response = await this.request<GitHubPullResponse>(auth, 'POST', `/repos/${draft.repository.owner}/${draft.repository.name}/pulls`, undefined, body, 'GitHubProvider.createPullOrMergeRequest');
     return this.mapPullRequest(draft.repository, response.data);
   }
 
   public async listIssues(auth: RepositoryAuthContext, repository: RepositorySummary): Promise<PaginatedResult<IssueSummary>> {
-    const response = await this.request<GitHubIssueResponse[]>(auth, 'GET', `/repos/${repository.ref.owner}/${repository.ref.name}/issues`, {
-      state: 'open',
-      per_page: 50
-    }, undefined, 'GitHubProvider.listIssues');
-    return {
-      items: response.data.map((issue: GitHubIssueResponse) => ({
+    const query = new Map<string, RepositoryQueryValue>();
+    query.set('state', 'open');
+    query.set('per_page', 50);
+    const response = await this.request<GitHubIssueResponse[]>(auth, 'GET', `/repos/${repository.ref.owner}/${repository.ref.name}/issues`, query, undefined, 'GitHubProvider.listIssues');
+    const items = response.data.map((issue: GitHubIssueResponse) => {
+      const summary: IssueSummary = {
         id: String(issue.id),
         number: issue.number,
         title: issue.title,
         state: issue.state,
         webUrl: issue.html_url
-      })),
-      nextCursor: undefined
-    };
+      };
+      return summary;
+    });
+    const result: PaginatedResult<IssueSummary> = { items, nextCursor: undefined };
+    return result;
   }
 
   public async listPullOrMergeRequests(auth: RepositoryAuthContext, repository: RepositorySummary): Promise<PaginatedResult<ReviewRequest>> {
-    const response = await this.request<GitHubPullResponse[]>(auth, 'GET', `/repos/${repository.ref.owner}/${repository.ref.name}/pulls`, {
-      state: 'open',
-      per_page: 50
-    }, undefined, 'GitHubProvider.listPullOrMergeRequests');
-    return {
+    const query = new Map<string, RepositoryQueryValue>();
+    query.set('state', 'open');
+    query.set('per_page', 50);
+    const response = await this.request<GitHubPullResponse[]>(auth, 'GET', `/repos/${repository.ref.owner}/${repository.ref.name}/pulls`, query, undefined, 'GitHubProvider.listPullOrMergeRequests');
+    const result: PaginatedResult<ReviewRequest> = {
       items: response.data.map((pullRequest: GitHubPullResponse) => this.mapPullRequest(repository.ref, pullRequest)),
       nextCursor: undefined
     };
+    return result;
   }
 
-  private async request<T>(auth: RepositoryAuthContext, method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: string, query: Record<string, string | number | boolean | undefined> | undefined, body: Record<string, Object | string | number | boolean | null> | undefined, operation: string): Promise<RepositoryHttpResponse<T>> {
+  private async request<T>(auth: RepositoryAuthContext, method: HttpMethod, path: string, query: Map<string, RepositoryQueryValue> | undefined, body: Map<string, RepositoryBodyValue> | undefined, operation: string): Promise<RepositoryHttpResponse<T>> {
+    const headers = new Map<string, string>();
+    headers.set('Accept', 'application/vnd.github+json');
+    headers.set('Authorization', `Bearer ${auth.accessToken}`);
+    headers.set('X-GitHub-Api-Version', '2022-11-28');
     const response = await this.httpClient.send<T>({
       method,
       url: buildUrl(this.apiBaseUrl, path, query),
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${auth.accessToken}`,
-        'X-GitHub-Api-Version': '2022-11-28'
-      },
+      headers,
       body
     });
     if (response.statusCode >= 400) {

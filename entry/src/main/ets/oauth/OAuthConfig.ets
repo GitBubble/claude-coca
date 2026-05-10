@@ -32,6 +32,11 @@ const GITEE_DEVICE_CODE_URL: string = 'https://gitee.com/oauth/device/code';
 const GITEE_TOKEN_URL: string = 'https://gitee.com/oauth/token';
 const GITEE_SCOPES: string[] = ['user_info', 'projects'];
 
+// NOTE: GitCode and Gitee endpoint URLs follow the standard RFC 8628 shape.
+// GitHub's Device Flow is fully documented; the GitCode / Gitee endpoints
+// here should be re-verified against each provider's developer console
+// before shipping (see docs/OAUTH_TESTING.md). Override these constants
+// rather than the call sites if a provider's paths differ.
 const GITCODE_DEVICE_CODE_URL: string = 'https://gitcode.com/oauth/device/code';
 const GITCODE_TOKEN_URL: string = 'https://gitcode.com/oauth/token';
 const GITCODE_SCOPES: string[] = ['user_info', 'projects'];

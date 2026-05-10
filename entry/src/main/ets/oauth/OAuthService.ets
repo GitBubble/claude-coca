@@ -110,7 +110,7 @@ export class OAuthService {
     this.cancel();
     this.cancelRequested = false;
     this.runId += 1;
-    const myRunId: number = this.runId;
+    const sessionRunId: number = this.runId;
     // Reset any prior terminal snapshot so the state-machine guard doesn't
     // reject the fresh session.
     this.snapshot = undefined;
@@ -138,7 +138,7 @@ export class OAuthService {
     });
 
     const result: DeviceCodeRequestResult = await this.requestDeviceCode(config);
-    if (this.cancelRequested || myRunId !== this.runId) {
+    if (this.cancelRequested || sessionRunId !== this.runId) {
       return this.finalizeCancellation(provider);
     }
     if (result.error) {
@@ -160,7 +160,7 @@ export class OAuthService {
       updatedAtMs: this.clock.nowMs()
     });
 
-    return this.pollUntilTerminal(config, validGrant, myRunId);
+    return this.pollUntilTerminal(config, validGrant, sessionRunId);
   }
 
   /**
@@ -217,19 +217,19 @@ export class OAuthService {
   private async pollUntilTerminal(
     config: OAuthProviderConfig,
     grant: DeviceCodeGrant,
-    myRunId: number
+    sessionRunId: number
   ): Promise<OAuthSessionSnapshot> {
     let intervalSeconds: number = grant.intervalSeconds;
     const deadlineMs: number = this.clock.nowMs() + grant.expiresInSeconds * 1000;
 
     while (true) {
-      if (this.cancelRequested || myRunId !== this.runId) {
+      if (this.cancelRequested || sessionRunId !== this.runId) {
         return this.finalizeCancellation(config.provider);
       }
 
       await this.clock.sleep(intervalSeconds * 1000);
 
-      if (this.cancelRequested || myRunId !== this.runId) {
+      if (this.cancelRequested || sessionRunId !== this.runId) {
         return this.finalizeCancellation(config.provider);
       }
 
@@ -254,7 +254,7 @@ export class OAuthService {
 
       const outcome: TokenPollOutcome = await this.pollTokenOnce(config, grant);
 
-      if (this.cancelRequested || myRunId !== this.runId) {
+      if (this.cancelRequested || sessionRunId !== this.runId) {
         return this.finalizeCancellation(config.provider);
       }
 

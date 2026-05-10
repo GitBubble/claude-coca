@@ -1,0 +1,7 @@
+"/api/mcp/auth_callback"
+"/api/organizations/"
+"/api/organizations/{organization_uuid}/projects/{project_uuid}/files"
+"/api/v2/profile"
+"/api/v2/rum"
+"/api/v2/spans"
+"/api/ws/organizations/"

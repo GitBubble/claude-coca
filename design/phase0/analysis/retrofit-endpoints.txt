@@ -1,0 +1,14 @@
+
+==== Retrofit Annotations ====
+
+
+==== Retrofit Headers & Parameters ====
+
+
+==== Retrofit Base URL ====
+
+design/phase0/decompiled/sources/com/squareup/wire/GrpcClient.java:73:            return new Builder().callFactory(wireGrpcClient.getClient()).baseUrl(wireGrpcClient.getBaseUrl()).minMessageToCompress(wireGrpcClient.getMinMessageToCompress());
+design/phase0/decompiled/sources/com/squareup/wire/GrpcClient.java:128:        public final Builder baseUrl(String baseUrl) {
+design/phase0/decompiled/sources/com/squareup/wire/GrpcClient.java:173:        public final Builder baseUrl(si7 url) {
+
+=== Search complete ===

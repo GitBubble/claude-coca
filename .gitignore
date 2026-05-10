@@ -17,8 +17,29 @@ node_modules/
 # Android reference binaries and generated reverse-engineering output
 *.apk
 *.xapk
-phase0/
 xapktool/
+
+# Top-level reverse-engineering scratch (large; never commit)
+/phase0/
+
+# design/phase0 — commit only curated analysis artifacts; exclude bulky raw output
+design/phase0/decompiled/
+design/phase0/decompiled-resources/sources/
+design/phase0/decompiled-resources/resources/res/
+design/phase0/decompiled-resources/resources/assets/
+design/phase0/decompiled-resources/resources/META-INF/
+design/phase0/decompiled-resources/resources/google/
+design/phase0/decompiled-resources/resources/com/
+design/phase0/decompiled-resources/resources/kotlin/
+design/phase0/decompiled-resources/resources/org/
+design/phase0/decompiled-resources/resources/stamp-cert-sha256
+design/phase0/decompiled-resources/resources/*.properties
+design/phase0/decompiled-resources/resources/*.bin
+design/phase0/decompiled-resources/resources/*.proto
+design/phase0/xapk-extracted/*.apk
+design/phase0/xapk-extracted/APKComboInstaller.url
+design/phase0/xapk-extracted/icon.png
+design/xapktool/
 
 # Local archives and logs
 *.log

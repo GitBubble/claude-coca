@@ -33,3 +33,12 @@ export function createAppServices(): AppServices {
     settingsStore: new AppSettingsStore()
   };
 }
+
+let sharedServices: AppServices | undefined = undefined;
+
+export function getAppServices(): AppServices {
+  if (!sharedServices) {
+    sharedServices = createAppServices();
+  }
+  return sharedServices;
+}
